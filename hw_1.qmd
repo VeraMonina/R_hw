@@ -1,0 +1,231 @@
+---
+title: "HW 1"
+author: "Вера Евгеньевна Монина"
+format: 
+  html:
+    self-contained: true
+---
+
+```{r}
+#| message: false
+
+library(tidyverse)
+theme_set(theme_bw())
+```
+
+Это [quarto](https://quarto.org/) документ. Чтобы его скомпилировать, можно нажать в RStudio кнопку Render. Вставьте ваше имя в поле автора, а код в соответствующие фрагменты, выделенные знаками `.
+
+## Задание 1.1
+
+Количество сегментов подвергшихся фонологической адаптации в заимствования из русского языка в ахвахском языке можно описать распределением Пуассона с параметром лямбда --- 1.98. Посчитайте вероятность, что взятое произвольно слово из словаря будет иметь от 1 до 3 сегментов с фонологической адаптацией.
+
+```{r}
+lambda <- 1.98  # параметр распределения Пуассона
+k <- 1:3        # от 1 до 3 сегментов
+
+# Вероятности для каждого cегмента
+probabilities <- dpois(x = k, lambda = lambda)
+# Суммарная вероятность
+total_probability <- sum(probabilities)
+
+print("Вероятности для k = 1, 2, 3:")
+print(probabilities)
+print(paste("Суммарная вероятность P(1 ≤ X ≤ 3) =", round(total_probability, 4)))
+```
+
+## Задание 1.2
+
+В работе [Moroz, Verhees 2019] исследовалась вариативность классовой атрибуции в андийском языке и выяснилось, что 9 носителей относят слово *бабочка* к классу *b* и 7 носиителей относят слово к классу *r*. В новой итерации эксперимента 38 носителей отнесли слово *бабочка*  к классу *b* и 6 носителей отнесли слово к классу *r*. Визуализируйте функцию правдоподобия и посчитайте какой из вариантов, заданный функцией `seq(0, 1, by = 0.01)`, имеет наибольшее значение функции правдоподобия.
+
+![](task_1.2.png)
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+p <- seq(0, 1, by = 0.01)
+p_grid <- p
+# 1 эксперимент (9 - b, 7 - r)
+# беру бин. распределение, потому что у нас только r/b и участники эксп. независимые
+x1 <- dbinom(9, 16, p)
+
+p_max_x1 <- p[which.max(x1)]
+print(paste("p с максимальным правдоподобием (1 эксп):", p_max_x1))
+
+tibble(p = p_grid) |> 
+   ggplot(aes(p)) +
+   stat_function(
+      fun = function(p) dbinom(9, 16, p),
+      geom = "line",
+      color = "black",
+      linewidth = 0.6
+   )+
+   stat_function(
+      fun = function(p) dbinom(9, 16, p),
+      geom = "col",
+      fill = "lightblue",
+      width = 0.006
+   ) +
+   geom_vline(
+      xintercept = p_max_x1,
+      color = "red",
+      linetype = "dashed",
+      linewidth = 0.7
+   ) +
+   annotate(
+      "text",
+      x = p_max_x1,
+      y = max(x1) * 0.9,
+      label = paste("p =", p_max_x1),
+      color = "red",
+      size = 4,
+      hjust = -0.1  
+   ) +
+   labs(
+      title = "Функция правдоподобия: эксперимент 1",
+      subtitle = "9 носителей: b, 7 носителей: r",
+      x = "параметр биномиального распределения p",
+      y = "значение функции правдоподобия"
+   ) +
+   theme_bw() 
+
+
+
+# 2 эксперимент (38 - b, 6 - r)  
+x2 <- dbinom(38, 44, p)
+
+p_max_x2 <- p[which.max(x2)]
+print(paste("p с максимальным правдоподобием (2 эксп):", p_max_x2))
+
+tibble(p = p_grid) |> 
+   ggplot(aes(p)) +
+   stat_function(
+      fun = function(p) dbinom(38, 44, p),
+      geom = "line",
+      color = "black",
+      linewidth = 0.6
+   ) +
+   stat_function(
+      fun = function(p) dbinom(38, 44, p),
+      geom = "col",
+      fill = "lightgreen",
+      width = 0.006
+   ) +
+   geom_vline(
+      xintercept = p_max_x2,
+      color = "red",
+      linetype = "dashed",
+      linewidth = 0.7
+   ) +
+   annotate(
+      "text",
+      x = p_max_x2,
+      y = max(x2) * 0.9,
+      label = paste("p =", p_max_x2),
+      color = "red",
+      size = 4,
+      hjust = -0.1 
+   ) +
+   labs(
+      title = "Функция правдоподобия: эксперимент 2",
+      subtitle = "38 носителей: b, 44 носителей: r",
+      x = "параметр биномиального распределения p",
+      y = "значение функции правдоподобия"
+   ) +
+   theme_bw() 
+
+
+# Совместная функция правдоподобия
+x_joint <- x1 * x2
+p_max_joint <- p[which.max(x_joint)]
+print(p_max_joint)
+
+tibble(p = p_grid) |> 
+   ggplot(aes(p)) +
+   stat_function(
+      fun = function(p) dbinom(9, 16, p) * dbinom(38, 44, p),
+      geom = "line",
+      color = "black",
+      linewidth = 0.6
+   ) +
+   stat_function(
+      fun = function(p) dbinom(9, 16, p) * dbinom(38, 44, p),
+      geom = "col",
+      fill = "orange",
+      width = 0.007
+   ) +
+   geom_vline(
+      xintercept = p_max_joint,  
+      color = "red",
+      linetype = "dashed",
+      linewidth = 0.7
+   ) +
+   
+   annotate(
+      "text",
+      x = p_max_joint, 
+      y = max(x_joint) * 0.9,  
+      label = paste("p =", p_max_joint),  
+      color = "red",
+      size = 4,
+      hjust = -0.1
+   ) +
+   labs(
+      title = "Совместная функция правдоподобия",
+      subtitle = "(9 b, 7 r) и (38 b, 6 r)",
+      x = "параметр биномиального распределения p",
+      y = "значение функции правдоподобия"
+   ) +
+   theme_bw() 
+```
+
+## Задание 1.3
+
+В `.csv` файл `data_1.3.csv` записаны данные времени реакции канадцев на некоторые трехсложных английские существительные с ударением на первый слог из работы [Tucker 2021]. Воспользуйтесь методом максимального правдоподобия, чтобы оценить параметры нормального и логнормального распределения, описывающие длительность гласных всех носителей и постройте следующий график.
+
+![](task_1.3.png)
+
+```{r}
+# 3 задание
+library(fitdistrplus)
+
+data <- read_csv("/Users/veramonina/Downloads/data_1.3.csv")
+
+ggplot(data, aes(x = RT)) +
+   geom_histogram(aes(y = ..density..), bins = 30, alpha = 0.01) +
+   geom_density(color = "black", linewidth = 1) +
+   labs(title = "Распределение времени реакции канадцев",
+      x = "Время реакции (мс)", 
+      y = "Плотность") +
+   theme_minimal()
+
+norm_fit <- fitdist(data$RT, distr = "norm", method = "mle")
+paste("Параметры нормального распределения:")
+print(norm_fit$estimate)
+
+lnorm_fit <- fitdist(data$RT, distr = "lnorm", method = "mle")
+paste("Параметры логнормального распределения:")
+print(lnorm_fit$estimate)
+
+ggplot(data, aes(x = RT)) +
+   geom_density(color = "black", linewidth = 0.8) +
+   stat_function(fun = dnorm, 
+      args = list(mean = norm_fit$estimate[1], sd = norm_fit$estimate[2]),
+      aes(color = "Нормальное"), linewidth = 0.8) +
+   stat_function(fun = dlnorm, 
+      args = list(meanlog = lnorm_fit$estimate[1], sdlog = lnorm_fit$estimate[2]),
+      aes(color = "Логнормальное"), linewidth = 0.8) +
+   scale_color_manual(values = c("Нормальное" = "darkgreen", 
+      "Логнормальное" = "red")) +
+   labs(
+      x = "Время реакции (мс)", 
+      y = "Плотность",
+      color = "Распределение")+
+   theme_minimal() +
+   theme(legend.position = "bottom")
+```
+
+## Задание 1.4
+
+Место для рефлексии по поводу ответов. Заполняется после того, как присланы ответы на задания до 20.02.2026 23:59. Это оцениваемое задание.
+
