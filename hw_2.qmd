@@ -1,0 +1,290 @@
+---
+title: "hw_2"
+output: html
+author: "Вера Евгеньевна Монина"
+---
+
+```{r}
+#| message: false
+
+library(tidyverse)
+theme_set(theme_bw())
+knitr::opts_chunk$set(message = FALSE)
+```
+
+## task 2.1 (вес задания: 1)
+
+В датасет `letter_frequency.csv` в вашем репозитории записаны частотности встречаемости букв разных языков согласно Википедии. Вы получили сообщение, содержащее одно слово: "most". Проведите байесовский апдейт, чтобы выяснить на каком языке, согласно модели, написано данное сообщение, исходя из гипотезы, что все языки равновероятны. Посчитайте апостериорную вероятность и выведите в консоль датафрейм, содержащий
+
+- язык с максимальной апостериорной вероятностью;
+- само значение апостериорной вероятности.
+
+```{r}
+df1 <- read.csv('letter_frequency.csv')
+glimpse(df1)
+# частотности для каждой буквы слова "most"
+most_letters <- c("m", "o", "s", "t")
+
+# преобразовываем таблицу в удобный формат с 3 столбцами: буква, язык, частотность
+df_long <- df1 %>%
+   pivot_longer(cols = -letter, names_to = "language", values_to = "frequency")
+
+# оставляем только те ьуквы, которые нам нужны
+letter_freqs <- df_long %>%
+   filter(letter %in% most_letters) %>%
+   pivot_wider(names_from = letter, values_from = frequency, values_fill = 0)
+
+# априорная вероятность -- равная для каждого языка 1/13
+prior = 1/nrow(letter_freqs)
+
+# вычисляем для каждого языка
+results <- letter_freqs %>%
+   mutate(
+      prior = prior,
+      likelihood = m * o * s * t, # функция правдоподобия
+      # просто перемножаем все вероятность относительно языка
+      product = prior * likelihood, # числитель 
+      posterior = product / sum(product) # апостериорная вероятность
+   ) %>%
+   select(language, prior, likelihood, product, posterior) %>%
+   arrange(desc(posterior))
+
+# находим наиболее вероятный язык
+best_result <- results[which.max(results$posterior), c("language","posterior")]
+
+print("Язык с макс. апостериорной вероятностью:")
+print(best_result)
+
+```
+
+## task 2.2 (вес задания: 2)
+
+В датасете `RNC_verses.csv` в вашем репозитории содержится выборка строчек из стихотворений разных русскоязычных авторов из поэтического подкорпуса НКРЯ (по одной на каждого автора), написанных в 1820 и 1920 годах (данные собрала О. Н. Ляшевская). В переменной `pos` размечена часть речи последнего слова строки. Смоделируйте вероятность появления существительного в конце стихотворения для стихов разных веков, используя априорное бета распределение с параметрами 40 и 40, посчитайте 80% байесовский доверительный интервал и визуализируйте все это на графике (обратите внимание на подписи).
+
+![](task_2.2.png)
+
+```{r}
+df2 <- read_csv('RNC_verses.csv')
+glimpse(df2)
+# переводим данные в биномиальный формат -- либо последнее NOUN, либо не NOUN
+df2 <- df2 |>
+   mutate(noun = ifelse(pos == "NOUN", 1, 0))
+
+head(df2)
+# для 1820 считаем кол-во ст-ий, которые оканчиваются NOUN
+noun_1820 <- df2 |>
+   filter(decade == 1820) |>
+   summarise(sum(noun)) |>
+   pull()
+
+# общее кол-во наблюдей для 1820
+all_1820 <- df2 |>
+   filter(decade == 1820) |>
+   nrow()
+
+#аналогичное делаем для 1920
+noun_1920 <- df2 |>
+   filter(decade == 1920) |>
+   summarise(sum(noun)) |>
+   pull()
+
+all_1920 <- df2 |>
+   filter(decade == 1920) |>
+   nrow()
+
+# априорное распределение 50/50 (NOUN/не NOUN)
+alpha_prior <- 40
+beta_prior <- 40
+
+# апостериорная веротяность
+# posterior = Beta(α + x, β + n − x)
+
+alpha_post_1820 <- alpha_prior + noun_1820
+beta_post_1820 <- beta_prior + (all_1820 - noun_1820)
+print(alpha_post_1820) +
+   (beta_post_1820)
+
+alpha_post_1920 <- alpha_prior + noun_1920
+beta_post_1920 <- beta_prior + (all_1920 - noun_1920)
+print(alpha_post_1920) +
+   (beta_post_1920)
+
+# посчитайте 80% байесовский доверительный интервал -->
+# нижний квантиль = 0.10
+# верхний квантиль = 0.90
+
+low_1820 <- qbeta(0.10, alpha_post_1820, beta_post_1820)
+high_1820 <- qbeta(0.90, alpha_post_1820, beta_post_1820)
+print(low_1820) +
+   (high_1820)
+
+
+low_1920 <- qbeta(0.10, alpha_post_1920, beta_post_1920)
+high_1920 <- qbeta(0.90, alpha_post_1920, beta_post_1920)
+print(low_1920) +
+      (high_1920)
+
+
+plot_1820 <- tibble(
+   x = seq(0,1,by=0.001),
+   y = dbeta(x, alpha_post_1820, beta_post_1820)
+)
+
+plot_1920 <- tibble(
+   x = seq(0,1,by=0.001),
+   y = dbeta(x, alpha_post_1920, beta_post_1920)
+)
+
+
+# данные, по которым строится график
+plot_1820$decade <- "1820"
+plot_1920$decade <- "1920"
+plot_df <- bind_rows(plot_1820, plot_1920)
+
+
+# строим график
+ggplot(plot_df, aes(x, y, color = decade)) +
+   
+   # линии апостериорных распределений
+   geom_line(size = 0.7) +
+   scale_color_manual(values = c("1820" = "red", "1920" = "lightblue")) +
+   
+   # 80% интервал для 1820
+   annotate(
+      geom = "errorbar",
+      y = -0.5,         
+      xmin = low_1820,
+      xmax = high_1820,
+      color = "red"          
+   ) +
+   
+   # 80% интервал для 1920
+   annotate(
+      geom = "errorbar",
+      y = -1.2,                  
+      xmin = low_1920,
+      xmax = high_1920,
+      color = "lightblue",   
+   ) +
+   
+
+   labs(
+      title = "Bayesian posterior beta distribution of poetry samples from 1820s (red) and ",
+      subtitle = "prior distribution is a beta with both parametres equal 40; errorbars represent 80% credible",
+      x = "ratio of nouns in the end of verse line",
+      y = "Y",
+      caption = "data from from the subcorpus of Russian Poetry in RNC"
+   ) +
+
+   theme_minimal() +
+   theme(legend.position = "none")
+```
+
+## task 2.3 (вес задания: 2)
+
+В датасет `eurasianphonology.csv` в вашем репозитории записаны агрегированные данные из базы данных фонологических систем Евразии <http://eurasianphonology.info> (Nikolaev et al. 2015). Смоделируйте распределение доли гласных из всех сегментов нормальным распределением с априорным нормальным распределением со средним = 0.301 и стандартным отклонением = 0.118, посчитайте 80% байесовский доверительный интервал и визуализируйте все это на графике (обратите внимание на подписи).
+
+![](task_2.3.png)
+
+```{r}
+df3 <- read_csv('eurasianphonology.csv')
+glimpse(df3)
+
+# хотим понять сколько всего гласных и согласных
+df3_new <- df3 %>%
+   group_by(segment_type) %>%         
+   summarise(total = sum(n)) %>%      
+   pivot_wider(names_from = segment_type, values_from = total)
+head(df3_new)
+
+# доп. переменные
+vowels_number <- df3_new$vowel       
+consonants_number <- df3_new$consonant 
+number_total <- vowels_number + consonants_number
+
+# вероятность гласного
+p_vowel <- vowels_number / number_total
+
+# еще один df, но уже с вероятностью гласного
+df_prop <- df3 |>
+   group_by(language, segment_type) |>
+   summarise(n = sum(n), .groups = "drop") |>
+   pivot_wider(names_from = segment_type, values_from = n) |>
+   mutate(p_vowel = vowel / (vowel + consonant))
+head(df_prop)
+
+# предполагаем, что распределение гласных по языкам -- нормальное
+mean_data <- mean(df_prop$p_vowel) # среднее
+sd_data <- sd(df_prop$p_vowel) # стандратное отклонение
+
+
+# Normal(mean = 0.301, sd = 0.118)
+mean_prior <- 0.301
+sd_prior <- 0.118
+
+# aпостериорное стандартное отклонение
+sd_post <- 1 / sqrt(1/sd_prior^2 + 1/sd_data^2)
+
+# апостериорное среднее
+mean_post <- weighted.mean(
+   c(mean_prior, mean_data),
+   c(1/sd_prior^2, 1/sd_data^2)
+)
+
+# квантили апостериорного распределения
+cvan_l_80 <- qnorm(0.1, mean_post, sd_post)
+cvan_h_80 <- qnorm(0.9, mean_post, sd_post)
+print(cvan_l_80) +
+   (cvan_h_80)
+
+df_prop |>
+   ggplot(aes(p_vowel)) +
+   geom_histogram(aes(y = ..density..), fill = "grey") +
+   stat_function(fun = dnorm,
+      args = list(mean_prior, sd_prior),
+      color = "lightblue") +
+   stat_function(fun = dnorm,
+      args = list(mean_post, sd_post),
+      color = "red") +
+   annotate(
+      geom = "errorbar",
+      y = -0,
+      xmin = cvan_l_80,
+      xmax = cvan_h_80,
+      size = 2
+   ) +
+   annotate(
+      geom = "text",
+      y = -0.3,
+      x = mean_post,
+      label = "80% credible interval"
+   ) +
+   labs(
+      title = "Bayesian prior N(0.301, 0.118) (blue) and posterior (red)",
+      x = "vowel ratio",
+      y = "density",
+      caption = "data from http://eurasianphonology.info (Nikolaev et al. 2015)"
+   ) + 
+   theme_minimal()
+```
+
+## task 2.4 (вес задания: 1)
+
+минусы модели: 
+
+- доля гласного находится в интервале от 0 до 1. А нормальное распределение обычно используют на данных, которые распределены от -∞ до +∞. 
+
+- наши данные не совсем симметричны + мы видим аномально пустую области в районе 0.8-0.9
+
+- языки в датасете не независимы -- то есть они могут разбиваться на отдельные семьи со схожими паттернами. Нормальная модель предполагает независимость наблюдений, что здесь может быть нарушено
+
+плюсы модели: 
+
+- одна из самых легких моделей с точки зрения математики (как для вычисление, так и для интерпретации)
+
+- если же мы все-таки предполагаем независимость всех событий, которые у нас представлены в датасете, тогда по центральной предельной теореме эти наблюдения будут стремиться к нормальному распределению
+...
+
+## task 2.5 (вес задания: 1)
+
+Место для рефлексии по поводу ответов. Заполняется после того, как присланы ответы на задания до 17.03.2026 23:59. Это оцениваемое задание.
