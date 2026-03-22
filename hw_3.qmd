@@ -1,0 +1,191 @@
+---
+title: "hw_3"
+output: html
+author: "Вера Евгеньевна Монина"
+---
+
+```{r}
+#| message: false
+
+library(tidyverse)
+library(brms)
+theme_set(theme_bw())
+```
+
+## task 3.1 (вес задания: 5)
+
+В датасет `norwegian_lexical_development.csv` записаны данные из исследования [Hansen 2017], посвященной усваиванию лексики носителями норвежского. В датасете собраны следующие переменные:
+
+- `Word_NW` --- норвежские слова;
+- `Translation` --- перевод норвежских слова на английский;
+- `CDS_freq` --- усредненная частота слова в речи, адресованной детям;
+- `AoA` --- усредненный возраст освоения слова (в месяцах);
+- `Lex_cat` --- лексические категории приписанная исследователями.
+
+Постройте и визуализируйте регрессию, которая предсказывает возраст усвоения слова категории `action words` в зависимости от частотности в речи адресованой детям (я использовал логорифм по основанию 10 от этой переменной). Я использовал мягкое арпиорное распределение для сигмы (`prior(normal(2, 5)`), и достаточно строгие априорные распределения для случайного члена и углового коэффициента. Попробуйте их определить, опираясь на данные и графики ниже:
+
+![](task_3.1.1.png)
+
+![](task_3.1.2.png)
+
+```{r}
+
+norwegian_lexical_development <- read_csv("/Users/veramonina/Downloads/hw3-VeraMonina-main/norwegian_lexical_development.csv")
+
+
+# фильтруем только action words и логарифмируем частоту
+df_action <- norwegian_lexical_development %>%
+   filter(Lex_cat == "action words") %>%
+   mutate(CDS_freq_log10 = log10(CDS_freq))
+
+# EDA
+mean_log <- mean(df_action$CDS_freq_log10)
+print(mean_log)
+
+# EDA 2
+df_action %>%
+   summarise(
+      mean_AoA = mean(AoA),
+      sd_AoA   = sd(AoA),
+      mean_log = mean(CDS_freq_log10),
+      sd_log   = sd(CDS_freq_log10),
+      min_log  = min(CDS_freq_log10),
+      max_log  = max(CDS_freq_log10)
+   )
+
+
+# визуализация распределения
+df_action %>%
+   pivot_longer(c(AoA, CDS_freq_log10)) %>%
+   ggplot(aes(x = value)) +
+   geom_histogram(bins = 20, fill = "steelblue", color = "white") +
+   facet_wrap(~name, scales = "free") +
+   theme_bw()
+
+# корреляция
+cor(df_action$CDS_freq_log10, df_action$AoA)
+
+
+
+# априоры первый способ
+# mean_AoA = 24.8  -> центр prior на интерсепт
+# sd_AoA = 2.57 -> sd prior на интерсепт
+# sd_log = 0.648 -> sd prior на slope (≈ 0.7)
+# correlation = -0.505
+# sd_AoA   = 2.57 -> prior на slope
+# -2 я пыталась как-то посчитать используя данные выше
+# -2 ≈  -0.505 * (2.57 / 0.648)
+priors_1 <- c(
+   prior(normal(24.8, 2.57), class = "Intercept"),  # mean_AoA +- sd_AoA
+   prior(normal(-2, 0.7),    class = "b"),           
+   prior(normal(2, 5),       class = "sigma", lb = 0) # из условия задания
+)
+
+fit_action <- brm(
+   AoA ~ CDS_freq_log10,
+   data    = df_action,
+   family  = gaussian(),
+   prior   = priors_1,
+   cores   = 4,
+   iter    = 2000,
+   warmup  = 1000,
+   chains  = 4,
+   control = list(adapt_delta = 0.85),
+   silent  = TRUE
+)
+fit_action
+
+plot(fit_action)
+
+fit_action |> 
+   conditional_effects() |> 
+   plot(points = TRUE)
+# но при таких априорах у меня даже близко не получилось достичь тех графиков, которые были приведены по условию
+
+# априоры второй способ
+# теперь априоры я пыталась подбирать по графикам из условия
+# теперь они уже в меньшей мере будут основаны на данных из EDA
+
+priors_2 <- c(
+   prior(normal(30, 0.5), class = "Intercept"), 
+   prior(normal(-2.5, 0.5),    class = "b"),           
+   prior(normal(2, 5),       class = "sigma", lb = 0) 
+)
+
+fit_action <- brm(
+   AoA ~ CDS_freq_log10,
+   data    = df_action,
+   family  = gaussian(),
+   prior   = priors_2,
+   cores   = 4,
+   iter    = 2000,
+   warmup  = 1000,
+   chains  = 4,
+   control = list(adapt_delta = 0.85),
+   silent  = TRUE
+)
+
+fit_action
+
+plot(fit_action)
+
+fit_action |> 
+   conditional_effects() |> 
+   plot(points = TRUE)
+
+```
+
+## task 3.2 (вес задания: 5)
+
+В датасет `karel_speech_tempo.csv` записаны данные из билингвального корпуса карельского языка. В датасете собраны следующие переменные:
+
+- `speaker` --- код носителя;
+- `n_vowels` --- количество гласных в высказывании;
+- `duration` --- длительность высказывания в секундах;
+- `gender` --- пол носителя;
+- `speech_tempo` --- скорость речи в высказывании.
+
+Постройте и визуализируйте регрессию со смешанными эффектами, которая предсказывает скорость речи на основании пола носителя. В качестве априорного распределения я использовал данные из работы [Stepanova 2011], согласно которой средняя скорость мужской речи 5.46 слогов в секунду со стандартным отклонением 2.02, а скорость женской речи 5.23 слогов в секунду со стандартным отклонением 1.84.
+
+![](task_3.2.png)
+
+```{r karel}
+df <- read_csv("/Users/veramonina/Downloads/hw3-VeraMonina-main/karel_speech_tempo.csv")
+
+#EDA
+df %>% count(gender)
+
+df %>% 
+   group_by(gender) %>% 
+   summarise(
+      mean_tempo = mean(speech_tempo),
+      sd_tempo   = sd(speech_tempo)
+   )
+
+# женская речь: mean = 5.23, sd = 1.84
+# мужская речь: mean = 5.46, sd = 2.02
+priors <- c(
+   prior(normal(5.23, 1.84), class = "b", coef = "genderf"), 
+   prior(normal(5.46, 2.02), class = "b", coef = "genderm"), 
+   prior(normal(2, 5),       class = "sigma", lb = 0),
+   prior(normal(2, 10),      class = "sd")
+)
+
+
+fit_karel <- brm(
+   speech_tempo ~ -1 + gender + (1|speaker), 
+   data    = df,
+   family  = gaussian(),
+   prior   = priors,
+   cores   = 4,
+   iter    = 2000,
+   warmup  = 1000,
+   chains  = 4,
+   control = list(adapt_delta = 0.85),
+   silent  = TRUE
+)
+
+plot(fit_karel)
+
+```
+
